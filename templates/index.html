@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>시험 모니터링 시스템</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .monitoring-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .video-container {
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .video-feed {
+            width: 100%;
+            height: auto;
+        }
+        .stats-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-panel {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-badge {
+            font-size: 0.9rem;
+            padding: 5px 10px;
+        }
+        .speech-text {
+            max-height: 150px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .rotation-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-video me-2"></i>
+                시험 모니터링 시스템
+            </a>
+        </div>
+    </nav>
+
+    <div class="monitoring-container">
+        <div class="row mt-4">
+            <div class="col-lg-8">
+                <div class="video-container">
+                    <img src="{{ url_for('video_feed') }}" class="video-feed" alt="실시간 영상"/>
+                    <div id="rotationInfo" class="rotation-info">
+                        회전: 0°/360°
+                    </div>
+                </div>
+
+                <div class="control-panel">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">제어 패널</h5>
+                        <span id="recordingStatus" class="badge bg-secondary status-badge">
+                            대기 중
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button id="recordButton" class="btn btn-danger" onclick="toggleRecording()">
+                            <i class="fas fa-record-vinyl me-2"></i>녹화 시작
+                        </button>
+                        <button id="rotationButton" class="btn btn-info" onclick="toggleRotationRecording()">
+                            <i class="fas fa-sync-alt me-2"></i>360° 감지
+                        </button>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                            <i class="fas fa-user-plus me-2"></i>얼굴 등록
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="stats-card">
+                    <h5 class="mb-3">모니터링 통계</h5>
+                    <div id="stats">
+                        <div class="mb-3">
+                            <label class="form-label">출석률</label>
+                            <div class="progress">
+                                <div id="presenceBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted" id="presenceText">0%</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">휴대폰 감지율</label>
+                            <div class="progress">
+                                <div id="phoneBar" class="progress-bar bg-warning" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted" id="phoneText">0%</small>
+                        </div>
+                        <div>
+                            <label class="form-label">360° 녹화</label>
+                            <div class="progress">
+                                <div id="rotationBar" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted" id="rotationText">0°</small>
+                                <i id="rotationCheck" class="fas fa-check-circle text-success" style="display: none;"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-card">
+                    <h5 class="mb-3">음성 인식 결과</h5>
+                    <div id="speechText" class="speech-text">
+                        <p class="text-muted">녹화 시작 후 음성이 인식됩니다.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 얼굴 등록 모달 -->
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">얼굴 등록</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadForm">
+                        <div class="mb-3">
+                            <label class="form-label">얼굴 이미지 선택</label>
+                            <input type="file" class="form-control" name="face" accept="image/*" required>
+                            <small class="text-muted">정면 얼굴이 잘 보이는 사진을 선택해주세요.</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-primary" onclick="uploadFace()">등록</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isRecording = false;
+        let isRotationRecording = false;
+
+        function toggleRecording() {
+            fetch('/toggle_recording', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    isRecording = data.recording;
+                    updateRecordingUI();
+                });
+        }
+
+        function toggleRotationRecording() {
+            if (!isRotationRecording) {
+                fetch('/start_rotation_recording', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            isRotationRecording = true;
+                            updateRotationUI();
+                            resetRotationStatus();
+                            document.getElementById('rotationInfo').style.display = 'block';
+                        } else {
+                            alert(data.error || '360° 감지를 시작할 수 없습니다.');
+                        }
+                    });
+            } else {
+                fetch('/stop_rotation_recording', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            isRotationRecording = false;
+                            updateRotationUI();
+                            resetRotationStatus();
+                        }
+                    });
+            }
+        }
+
+        function updateRotationStatus() {
+            if (isRotationRecording) {
+                fetch('/get_rotation_status')
+                    .then(response => response.json())
+                    .then(data => {
+                        const rotationBar = document.getElementById('rotationBar');
+                        const rotationText = document.getElementById('rotationText');
+                        const rotationCheck = document.getElementById('rotationCheck');
+                        const rotationInfo = document.getElementById('rotationInfo');
+
+                        // 진행률 계산 (360도 기준)
+                        const progress = Math.min((data.angle / 360) * 100, 100);
+                        rotationBar.style.width = `${progress}%`;
+                        rotationText.textContent = `${data.angle.toFixed(1)}°`;
+
+                        // 회전 상태 정보 업데이트
+                        rotationInfo.textContent = `회전: ${data.angle.toFixed(1)}/360.0°`;
+                        rotationInfo.style.display = 'block';
+
+                        if (data.complete) {
+                            rotationCheck.style.display = 'block';  // 체크 표시 보이기
+                            alert('360도 회전이 완료되었습니다!');
+                            isRotationRecording = false;
+                            updateRotationUI();
+                        }
+                    });
+            }
+        }
+
+        // 녹화 종료 시 상태 초기화
+        function resetRotationStatus() {
+            const rotationBar = document.getElementById('rotationBar');
+            const rotationText = document.getElementById('rotationText');
+            const rotationCheck = document.getElementById('rotationCheck');
+            const rotationInfo = document.getElementById('rotationInfo');
+
+            rotationBar.style.width = '0%';
+            rotationText.textContent = '0°';
+            rotationCheck.style.display = 'none';
+            rotationInfo.style.display = 'none';
+        }
+
+        function updateRotationUI() {
+            const button = document.getElementById('rotationButton');
+            const status = document.getElementById('recordingStatus');
+
+            if (isRotationRecording) {
+                button.innerHTML = '<i class="fas fa-stop me-2"></i>감지 중지';
+                button.classList.replace('btn-info', 'btn-warning');
+                status.innerHTML = '<i class="fas fa-sync-alt text-info me-1"></i>360° 감지 중';
+                status.classList.replace('bg-secondary', 'bg-info');
+            } else {
+                button.innerHTML = '<i class="fas fa-sync-alt me-2"></i>360° 감지';
+                button.classList.replace('btn-warning', 'btn-info');
+                if (!isRecording) {
+                    status.innerHTML = '대기 중';
+                    status.classList.replace('bg-info', 'bg-secondary');
+                }
+            }
+        }
+
+        function updateRecordingUI() {
+            const button = document.getElementById('recordButton');
+            const status = document.getElementById('recordingStatus');
+
+            if (isRecording) {
+                button.innerHTML = '<i class="fas fa-stop me-2"></i>녹화 중지';
+                button.classList.replace('btn-danger', 'btn-warning');
+                status.innerHTML = '<i class="fas fa-circle text-danger me-1"></i>녹화 중';
+                status.classList.replace('bg-secondary', 'bg-danger');
+            } else {
+                button.innerHTML = '<i class="fas fa-record-vinyl me-2"></i>녹화 시작';
+                button.classList.replace('btn-warning', 'btn-danger');
+                if (!isRotationRecording) {
+                    status.innerHTML = '대기 중';
+                    status.classList.replace('bg-danger', 'bg-secondary');
+                }
+            }
+        }
+
+        function updateStats() {
+            fetch('/get_stats')
+                .then(response => response.json())
+                .then(data => {
+                    const presenceBar = document.getElementById('presenceBar');
+                    const phoneBar = document.getElementById('phoneBar');
+                    const presenceText = document.getElementById('presenceText');
+                    const phoneText = document.getElementById('phoneText');
+
+                    presenceBar.style.width = `${data.presence_rate}%`;
+                    phoneBar.style.width = `${data.phone_rate}%`;
+                    presenceText.textContent = `${data.presence_rate.toFixed(1)}%`;
+                    phoneText.textContent = `${data.phone_rate.toFixed(1)}%`;
+                });
+        }
+
+        function updateSpeechText() {
+            fetch('/get_speech_text')
+                .then(response => response.json())
+                .then(data => {
+                    const speechDiv = document.getElementById('speechText');
+                    if (data.text) {
+                        speechDiv.innerHTML = `<p>${data.text}</p>`;
+                    }
+                });
+        }
+
+        function uploadFace() {
+            const formData = new FormData(document.getElementById('uploadForm'));
+            fetch('/upload_face', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || data.error);
+                if (data.message) {
+                    bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+                }
+            });
+        }
+
+        // 실시간 업데이트
+        setInterval(() => {
+            if (isRecording) {
+                updateStats();
+                updateSpeechText();
+            }
+            if (isRotationRecording) {
+                updateRotationStatus();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
